@@ -1,0 +1,42 @@
+# ROI Bounding Box Tool Configuration
+# Video ROI (Region of Interest) selection for WhisperX SceneDetect
+
+# Path to the video file to load
+# Can be overridden via command line: python roi_tool.py --video /path/to/video.mp4
+video_path: null
+
+# Initial ROI coordinates (x1 y1 x2 y2)
+# Format: top-left corner (x1, y1) and bottom-right corner (x2, y2)
+# Set to null to let user draw freely from the start
+initial_roi: 
+
+# Window settings
+window:
+  width: 1400
+  height: 900
+  title: "ROI Bounding Box Tool - WhisperX SceneDetect"
+
+# Display settings
+display:
+  # Initial zoom level (1.0 = 100%, 2.0 = 200%, etc.)
+  zoom: 1.0
+
+  # Grid spacing for snap-to-grid (0 = disabled)
+  grid_spacing: 0
+
+# Output settings
+output:
+  # Where to save the coordinates
+  output_file: "roi.txt"
+
+  # Copy coordinates to clipboard when saved
+  copy_to_clipboard: true
+
+# UI Settings
+ui:
+  # Box line color and thickness
+  box_color: "#00FF00"
+  box_thickness: 2
+
+  # Preview area opacity (0.0 to 1.0)
+  preview_opacity: 0.3

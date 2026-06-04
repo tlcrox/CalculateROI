@@ -1,0 +1,5 @@
+numpy==1.24.3
+opencv-python==4.9.0.80
+Pillow==10.1.0
+PyYAML==6.0.1
+pyperclip==1.8.2
