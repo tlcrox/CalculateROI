@@ -27,7 +27,7 @@ display:
 # Output settings
 output:
   # Where to save the coordinates
-  output_file: "roi.txt"
+  output_file: "roi_per_video.json"
 
   # Copy coordinates to clipboard when saved
   copy_to_clipboard: true

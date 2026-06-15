@@ -46,6 +46,8 @@ class ROITool:
         self.start_point = None
         self.roi_history: Dict[int, Tuple[int, int, int, int]] = {}
         self.all_roi_data: Dict[str, Dict[int, Tuple[int, int, int, int]]] = {}
+        self.timestamp_to_frame: Dict[str, int] = {}
+        self.video_fps: Dict[str, float] = {}
 
         self.zoom = float(self.config['display']['zoom'])
         self.pan_x = 0
@@ -101,6 +103,11 @@ class ROITool:
                         for filename, frame_data in data.items():
                             self.all_roi_data[filename] = {}
                             for time_str, roi_info in frame_data.items():
+                                # Load fps from metadata if present
+                                if time_str == "_metadata" and isinstance(roi_info, dict):
+                                    if "fps" in roi_info:
+                                        self.video_fps[filename] = float(roi_info["fps"])
+                                    continue
                                 frame_num = roi_info.get("frame", 0)
                                 self.all_roi_data[filename][frame_num] = self._parse_roi_string(roi_info.get("roi", ""))
         except Exception as e:
@@ -132,7 +139,8 @@ class ROITool:
         ctrl.pack(fill=tk.X, padx=5, pady=5)
 
         tk.Button(ctrl, text="Load Video", command=self.load_video_dialog).pack(side=tk.LEFT, padx=3)
-        tk.Button(ctrl, text="Reset", command=self.reset_memory, bg='#FFB6C1').pack(side=tk.LEFT, padx=3)
+        tk.Button(ctrl, text="Reset Video", command=self.reset_memory, bg='#FFB6C1').pack(side=tk.LEFT, padx=3)
+        tk.Button(ctrl, text="Reset All", command=self.reset_all, bg='#FF6B6B').pack(side=tk.LEFT, padx=3)
         tk.Button(ctrl, text="Save ROI", command=self.save_roi, bg='#90EE90').pack(side=tk.LEFT, padx=3)
         tk.Button(ctrl, text="Export", command=self.export_roi, bg='#87CEEB').pack(side=tk.LEFT, padx=3)
 
@@ -165,9 +173,11 @@ class ROITool:
         self.info_text = tk.Text(right, width=22, height=8, bg='lightgray', state=tk.DISABLED, font=("Courier", 8))
         self.info_text.pack(fill=tk.X, pady=3)
 
-        tk.Label(right, text="History:", font=("Arial", 9, "bold")).pack(anchor=tk.W)
-        self.history_text = tk.Text(right, width=22, height=8, bg='lightyellow', state=tk.DISABLED, font=("Courier", 8))
+        tk.Label(right, text="History (click to jump):", font=("Arial", 9, "bold")).pack(anchor=tk.W)
+        self.history_text = tk.Text(right, width=22, height=8, bg='lightyellow', state=tk.DISABLED, font=("Courier", 8), cursor="hand2")
         self.history_text.pack(fill=tk.BOTH, expand=True, pady=3)
+        self.history_text.bind('<Button-1>', self.on_history_click)
+        self.history_text.tag_config("timestamp", foreground="blue", underline=True)
 
         tk.Label(right, text="Preview:", font=("Arial", 9, "bold")).pack(anchor=tk.W)
         self.preview_canvas = tk.Canvas(right, width=200, height=200, bg='black')
@@ -192,7 +202,7 @@ class ROITool:
         tk.Label(slider_frame, text="Frame:").pack(side=tk.LEFT, padx=5)
         self.slider = tk.Scale(slider_frame, from_=0, to=100, orient=tk.HORIZONTAL, command=self.on_slider_move)
         self.slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.frame_label = tk.Label(slider_frame, text="0/0", width=12)
+        self.frame_label = tk.Label(slider_frame, text="0/0 (00:00:00)", width=18)
         self.frame_label.pack(side=tk.LEFT, padx=5)
 
     def bind_keyboard(self):
@@ -235,9 +245,10 @@ class ROITool:
             self.fps = float(fps) if fps and float(fps) > 0 else 30.0
 
             self.slider.config(to=max(1, self.total_frames - 1))
+            self.video_fps[self.current_video_filename] = self.fps
 
             if self.current_video_filename in self.all_roi_data:
-                self.roi_history = self.all_roi_data[self.current_video_filename].copy()
+                self.roi_history = dict(self.all_roi_data[self.current_video_filename])
             else:
                 self.roi_history = {}
                 self.all_roi_data[self.current_video_filename] = self.roi_history
@@ -328,6 +339,8 @@ class ROITool:
             x1, y1, x2, y2 = self.roi_box
             time = self.format_time(self.current_frame_num / self.fps)
             info = f"Frame: {self.current_frame_num}\nTime: {time}\n\nx1: {x1} y1: {y1}\nx2: {x2} y2: {y2}\n\nSize: {x2-x1}x{y2-y1}\n\n{x1} {y1} {x2} {y2}"
+            print (f"slider time fps {self.fps}  fn {self.current_frame_num} fn/fps {self.current_frame_num / self.fps}  time {time}")
+
         else:
             info = "No ROI.\nDrag to draw box."
 
@@ -338,6 +351,7 @@ class ROITool:
         """Update history panel."""
         self.history_text.config(state=tk.NORMAL)
         self.history_text.delete(1.0, tk.END)
+        self.timestamp_to_frame.clear()
 
         if self.current_video_filename:
             self.history_text.insert(1.0, f"File: {self.current_video_filename}\n\n")
@@ -348,7 +362,10 @@ class ROITool:
             for fn in sorted(self.roi_history.keys()):
                 x1, y1, x2, y2 = self.roi_history[fn]
                 t = self.format_time(fn / self.fps) if self.fps > 0 else "00:00:00"
-                self.history_text.insert(tk.END, f"{t}\n{x1} {y1} {x2} {y2}\n\n")
+                self.timestamp_to_frame[t] = fn
+                print (f"update history fps {self.fps}  fn {fn} fn/fps {fn / self.fps}  time {t}")
+                self.history_text.insert(tk.END, f"{t}\n", "timestamp")
+                self.history_text.insert(tk.END, f"{x1} {y1} {x2} {y2}\n\n")
 
         self.history_text.config(state=tk.DISABLED)
 
@@ -365,8 +382,19 @@ class ROITool:
             self.roi_box = None
 
     def reset_memory(self):
-        """Clear all ROI data from memory."""
-        if messagebox.askyesno("Reset", "Clear all ROI data?"):
+        """Clear ROI data for current video only."""
+        if not self.current_video_filename:
+            messagebox.showwarning("Warning", "No video loaded.")
+            return
+        if messagebox.askyesno("Reset Video", f"Clear all ROI data for {self.current_video_filename}?"):
+            self.roi_history.clear()
+            self.all_roi_data[self.current_video_filename] = {}
+            self.update_history()
+            self.status_label.config(text=f"Data cleared for {self.current_video_filename}", fg="blue")
+
+    def reset_all(self):
+        """Clear all ROI data from memory for all videos."""
+        if messagebox.askyesno("Reset All", "Clear all ROI data for ALL videos?"):
             self.all_roi_data.clear()
             self.roi_history.clear()
             self.update_history()
@@ -382,10 +410,11 @@ class ROITool:
             return
 
         self.roi_history[self.current_frame_num] = self.roi_box
-        self.all_roi_data[self.current_video_filename] = self.roi_history
+        self.all_roi_data[self.current_video_filename] = dict(self.roi_history)
 
         self.update_history()
         t = self.format_time(self.current_frame_num / self.fps)
+        print (f"save roi fps {self.fps}  fn {self.current_frame_num} fn/fps {self.current_frame_num / self.fps}  time {t}")
         self.status_label.config(text=f"ROI saved at {t}", fg="green")
 
     def export_roi(self):
@@ -399,15 +428,22 @@ class ROITool:
 
             export = {}
             for fname, roi_dict in self.all_roi_data.items():
-                if roi_dict:
+                if roi_dict and len(roi_dict) > 0:
                     export[fname] = {}
-                    for fn, (x1, y1, x2, y2) in roi_dict.items():
-                        fps = self.fps if fname == self.current_video_filename else 30.0
-                        t = self.format_time(fn / fps)
-                        export[fname][t] = {
-                            "frame": fn,
-                            "roi": f"{x1} {y1} {x2} {y2}"
-                        }
+                    fps = self.video_fps.get(fname, 30.0)
+                    # Store fps in metadata for persistence
+                    export[fname]["_metadata"] = {"fps": fps}
+                    seen_frames = set()
+                    for fn in sorted(roi_dict.keys()):
+                        if fn not in seen_frames:
+                            x1, y1, x2, y2 = roi_dict[fn]
+                            t = self.format_time(fn / fps)
+                            print (f"export output time {self.fps} fps {fps} fn {fn} fn/fps {fn/fps}  time {t}")
+                            export[fname][t] = {
+                                "frame": fn,
+                                "roi": f"{x1} {y1} {x2} {y2}"
+                            }
+                            seen_frames.add(fn)
 
             with open(out_file, 'w') as f:
                 json.dump(export, f, indent=2)
@@ -458,6 +494,21 @@ class ROITool:
             self.zoom_out()
         else:
             self.zoom_in()
+
+    def on_history_click(self, e):
+        """Handle click on history text to jump to timestamp."""
+        try:
+            index = self.history_text.index(f"@{e.x},{e.y}")
+            line_num = int(index.split('.')[0])
+            line_text = self.history_text.get(f"{line_num}.0", f"{line_num}.end").strip()
+            
+            if line_text in self.timestamp_to_frame:
+                frame_num = self.timestamp_to_frame[line_text]
+                self.get_frame(frame_num)
+                self.draw_frame()
+                self.update_slider()
+        except:
+            pass
 
     def zoom_in(self):
         """Increase zoom."""
@@ -530,12 +581,15 @@ class ROITool:
         if not self.slider_updating and self.cap:
             self.get_frame(int(float(val)))
             self.draw_frame()
+            self.update_slider()
 
     def update_slider(self):
         """Update slider to current frame."""
         self.slider_updating = True
         self.slider.set(self.current_frame_num)
-        self.frame_label.config(text=f"{self.current_frame_num}/{self.total_frames}")
+        time_str = self.format_time(self.current_frame_num / self.fps)
+        print (f"slider time fps {self.fps}  fn {self.current_frame_num} fn/fps {self.current_frame_num / self.fps}  time {time_str}")
+        self.frame_label.config(text=f"{self.current_frame_num}/{self.total_frames} ({time_str})")
         self.slider_updating = False
 
     def toggle_play(self):
@@ -558,20 +612,12 @@ class ROITool:
         s = int(seconds % 60)
         return f"{h:02d}:{m:02d}:{s:02d}"
 
-    def run(self):
-        """Start the app."""
-        self.root.mainloop()
-
-
-def main():
-    parser = argparse.ArgumentParser(description="ROI Tool for WhisperX")
-    parser.add_argument('--config', type=str, default=None, help='Config file path')
-    parser.add_argument('--video', type=str, default=None, help='Video file path')
-
-    args = parser.parse_args()
-    app = ROITool(config_path=args.config, video_path=args.video)
-    app.run()
-
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="ROI Bounding Box Tool for WhisperX SceneDetect")
+    parser.add_argument("--config", help="Config file path")
+    parser.add_argument("--video", help="Video file path")
+    args = parser.parse_args()
+
+    tool = ROITool(config_path=args.config, video_path=args.video)
+    tool.root.mainloop() 
