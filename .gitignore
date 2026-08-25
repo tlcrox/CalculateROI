@@ -1,0 +1,5 @@
+.vscode/
+__pycache__/
+.venv
+.gitignore
+CalculateROI.code-workspace
